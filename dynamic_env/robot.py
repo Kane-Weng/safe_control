@@ -126,6 +126,12 @@ class BaseRobotDyn(BaseRobot):
         Render the collision parabola based on functions
         obs: [obs_x, obs_y, obs_r]
         '''
+        # --- NEW CODE START ---
+        if self.robot_spec['model'] == 'DoubleIntegrator3D_DPCBF':
+            self.robot.draw_collision_parabola(X, obs_list, ax)
+            return
+        # --- NEW CODE END ---
+        
         if self.robot_spec['model'] not in ['KinematicBicycle2D_DPCBF']:
             return
 

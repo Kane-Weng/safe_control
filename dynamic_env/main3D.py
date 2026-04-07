@@ -52,10 +52,11 @@ class LocalTrackingControllerDyn(LocalTrackingController):
         
     # Update dynamic obs position
     def step_dyn_obs(self):
-        """if self.obs (n,5) array (ex) [x, y, r, vx, vy], update obs position per time step"""
-        if len(self.obs) != 0 and self.obs.shape[1] >= 5:
-            self.obs[:, 0] += self.obs[:, 3] * self.dt
-            self.obs[:, 1] += self.obs[:, 4] * self.dt
+        """obs format: [x, y, z, r, vx, vy, vz]"""
+        if len(self.obs) != 0 and self.obs.shape[1] >= 7:
+            self.obs[:, 0] += self.obs[:, 4] * self.dt # vx
+            self.obs[:, 1] += self.obs[:, 5] * self.dt # vy
+            self.obs[:, 2] += self.obs[:, 6] * self.dt # vz
     
     def render_dyn_obs(self):
         if len(self.obs_vel_arrows) != len(self.obs):
@@ -70,14 +71,14 @@ class LocalTrackingControllerDyn(LocalTrackingController):
                     self.obs_vel_arrows.append(arrow)
 
         for i, obs_info in enumerate(self.obs):
-            # obs: [x, y, r, vx, vy]
-            ox, oy, r = obs_info[:3]
+            # obs: [x, y, z, r, vx, vy, vz]
+            ox, oy, oz, r = obs_info[:4]        # oz not yet used, visualize in 2D first
             self.dyn_obs_patch[i].center = ox, oy
             self.dyn_obs_patch[i].set_radius(r)
 
             # Check if there are arrows to update
             if i < len(self.obs_vel_arrows):
-                vx, vy = obs_info[3], obs_info[4]
+                vx, vy = obs_info[4], obs_info[5]
                 
                 # Remove the old arrow and add a new one to update its properties
                 # This is a robust way to handle patches in matplotlib animations
@@ -155,7 +156,7 @@ class LocalTrackingControllerDyn(LocalTrackingController):
         if self.state_machine == 'rotate':
             goal_angle = np.arctan2(self.goal[1] - self.robot.X[1, 0],
                                     self.goal[0] - self.robot.X[0, 0])
-            if self.robot_spec['model'] in ['SingleIntegrator2D', 'DoubleIntegrator2D']:
+            if self.robot_spec['model'] in ['SingleIntegrator2D', 'DoubleIntegrator2D', 'DoubleIntegrator3D_DPCBF']:
                 self.u_att = self.robot.rotate_to(goal_angle)
                 u_ref = self.robot.stop()
             elif self.robot_spec['model'] in ['Unicycle2D', 'DynamicUnicycle2D', 'KinematicBicycle2D', 'KinematicBicycle2D_C3BF', 'KinematicBicycle2D_DPCBF', 'Quad2D', 'VTOL2D']:
@@ -185,7 +186,7 @@ class LocalTrackingControllerDyn(LocalTrackingController):
         # 6. Draw collision cones/parabolas for C3BF/DPCBF
         if self.robot_spec['model'] == 'KinematicBicycle2D_C3BF':
             self.robot.draw_collision_cone(self.robot.X, self.nearest_multi_obs, self.ax)
-        elif self.robot_spec['model'] == 'KinematicBicycle2D_DPCBF':
+        elif self.robot_spec['model'] in ['KinematicBicycle2D_DPCBF', 'DoubleIntegrator3D_DPCBF']:
             self.robot.draw_collision_parabola(self.robot.X, self.nearest_multi_obs, self.ax) 
 
         # 7. Update the attitude controller
@@ -229,7 +230,7 @@ class LocalTrackingControllerDyn(LocalTrackingController):
 
 def single_agent_main(controller_type):
     dt = 0.05
-    model = 'KinematicBicycle2D_DPCBF' # SingleIntegrator2D, DoubleIntegrator2D, DynamicUnicycle2D, KinematicBicycle2D, KinematicBicycle2D_C3BF, KinematicBicycle2D_DPCBF, Quad2D
+    model = 'DoubleIntegrator3D_DPCBF' # SingleIntegrator2D, DoubleIntegrator2D, DynamicUnicycle2D, KinematicBicycle2D, KinematicBicycle2D_C3BF, KinematicBicycle2D_DPCBF, Quad2D
 
     waypoints = [
          [1, 7.5, 0],
@@ -251,83 +252,29 @@ def single_agent_main(controller_type):
     dynamic_obs = []  
     for i, obs_info in enumerate(known_obs):
         ox, oy, r = obs_info[:3]
+        oz = 0.0    # flat slice
         if i % 2 == 0:
-            vx, vy = -0.5, 0.5
+            vx, vy, vz = -0.5, 0.5, 0.0
         else:
-            vx, vy = -0.5, -0.5
-        y_min, y_max = 0.0, 15.0
-        dynamic_obs.append([ox, oy, r, vx, vy, y_min, y_max])
+            vx, vy, vz = -0.5, -0.5, 0.0
+        
+        dynamic_obs.append([ox, oy, oz, r, vx, vy, vz])
     known_obs = np.array(dynamic_obs)
 
     env_width = 22.0
     env_height = 15.0
-    if model == 'SingleIntegrator2D':
-        robot_spec = {
-            'model': 'SingleIntegrator2D',
-            'v_max': 1.0,
-            'radius': 0.25
-        }
-    elif model == 'DoubleIntegrator2D':
-        robot_spec = {
-            'model': 'DoubleIntegrator2D',
-            'v_max': 1.0,
-            'a_max': 1.0,
-            'radius': 0.25,
-            'sensor': 'rgbd'
-        }
-    elif model == 'DynamicUnicycle2D':
-        robot_spec = {
-            'model': 'DynamicUnicycle2D',
-            'w_max': 0.5,
-            'a_max': 0.5,
-            'sensor': 'rgbd',
-            'radius': 0.25
-        }
-    elif model == 'KinematicBicycle2D':
-        robot_spec = {
-            'model': 'KinematicBicycle2D',
-            'a_max': 0.5,
-            'sensor': 'rgbd',
-            'radius': 0.5
-        }
-    elif model == 'KinematicBicycle2D_C3BF':
-        robot_spec = {
-            'model': 'KinematicBicycle2D_C3BF',
-            'a_max': 5.0,
-            'radius': 0.3
-        }
-    elif model == 'KinematicBicycle2D_DPCBF':
-        robot_spec = {
-            'model': 'KinematicBicycle2D_DPCBF',
-            'a_max': 5.0,
-            # 'sensor': 'rgbd',
-            'radius': 0.3
-        }
-    elif model == 'Quad2D':
-        robot_spec = {
-            'model': 'Quad2D',
-            'f_min': 3.0,
-            'f_max': 10.0,
-            'sensor': 'rgbd',
-            'radius': 0.25
-        }
-        # override the waypoints with z axis
-        waypoints = [
-            [2, 2, 0, math.pi/2],
-            [2, 12, 1, 0],
-            [12, 12, -1, 0],
-            [12, 2, 0, 0]
-        ]
+    
+    # 3D Robot Specs
+    robot_spec = {
+        'model': 'DoubleIntegrator3D_DPCBF',
+        'v_max': 3.0,
+        'a_max': 5.0, 
+        'radius': 0.25
+    }
 
     waypoints = np.array(waypoints, dtype=np.float64)
 
-    if model in ['SingleIntegrator2D', 'DoubleIntegrator2D', 'Quad2D']:
-        x_init = waypoints[0]
-    else:
-        x_init = np.append(waypoints[0], 1.0)
-    
-    if known_obs.shape[1] != 7:
-        known_obs = np.hstack((known_obs, np.zeros((known_obs.shape[0], 2)))) # Set static obs velocity 0.0 at (5, 5)
+    x_init = np.array([waypoints[0][0], waypoints[0][1], waypoints[0][2], 0.0, 0.0, 0.0])
     
     plot_handler = plotting.Plotting(width=env_width, height=env_height, known_obs=known_obs)
     ax, fig = plot_handler.plot_grid("") # you can set the title of the plot here

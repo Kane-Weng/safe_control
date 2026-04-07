@@ -115,6 +115,16 @@ class BaseRobot:
                 from safe_control.dynamic_env.kinematic_bicycle2D_dpcbf import KinematicBicycle2D_DPCBF
             self.robot = KinematicBicycle2D_DPCBF(dt, robot_spec)
             self.yaw = self.X[2, 0]
+        # --- NEW CODE FOR 3D ---
+        elif self.robot_spec['model'] == 'DoubleIntegrator3D_DPCBF':
+            try:
+                from double_integrator3D_dpcbf import DoubleIntegrator3D_DPCBF
+            except ImportError:
+                from safe_control.dynamic_env.double_integrator3D_dpcbf import DoubleIntegrator3D_DPCBF
+            self.robot = DoubleIntegrator3D_DPCBF(dt, robot_spec)
+            # Setting yaw to 0.0 to prevent plotting errors in the 2D visualizer.
+            self.yaw = 0.0 
+        # --- NEW CODE END ---
         elif self.robot_spec['model'] == 'Quad2D':
             try:
                 from quad2D import Quad2D
@@ -405,7 +415,7 @@ class BaseRobot:
             return self.robot.nominal_input(self.X, goal, d_min, k_omega, k_v)
         elif self.robot_spec['model'] in ['DynamicUnicycle2D', 'KinematicBicycle2D', 'KinematicBicycle2D_C3BF', 'KinematicBicycle2D_DPCBF']:
             return self.robot.nominal_input(self.X, goal, d_min, k_omega, k_a, k_v)
-        elif self.robot_spec['model'] == 'DoubleIntegrator2D':
+        elif self.robot_spec['model'] in ['DoubleIntegrator2D', 'DoubleIntegrator3D_DPCBF']:
             return self.robot.nominal_input(self.X, goal, d_min, k_v, k_a)
         elif self.robot_spec['model'] in ['Quad2D', 'Quad3D', 'VTOL2D']:
             # these three have quite complex nominal input
@@ -428,7 +438,7 @@ class BaseRobot:
         return self.robot.has_stopped(self.X)
 
     def rotate_to(self, theta):
-        if self.robot_spec['model'] in ['SingleIntegrator2D', 'DoubleIntegrator2D']:
+        if self.robot_spec['model'] in ['SingleIntegrator2D', 'DoubleIntegrator2D', 'DoubleIntegrator3D_DPCBF']:
             return self.robot.rotate_to(self.yaw, theta)
         return self.robot.rotate_to(self.X, theta)
 
@@ -443,7 +453,7 @@ class BaseRobot:
         self.U = U.reshape(-1, 1)
         self.X = self.robot.step(self.X, self.U)
         self.U_att = U_att
-        if self.robot_spec['model'] in ['SingleIntegrator2D', 'DoubleIntegrator2D'] and self.U_att is not None:
+        if self.robot_spec['model'] in ['SingleIntegrator2D', 'DoubleIntegrator2D', 'DoubleIntegrator3D_DPCBF'] and self.U_att is not None:
             self.U_att = U_att.reshape(-1, 1)
             self.yaw = self.robot.step_rotate(self.yaw, self.U_att)
         elif self.robot_spec['model'] in ['Unicycle2D', 'DynamicUnicycle2D', 'KinematicBicycle2D', 'KinematicBicycle2D_C3BF', 'KinematicBicycle2D_DPCBF', 'Quad2D', 'VTOL2D']:

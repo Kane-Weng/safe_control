@@ -26,6 +26,10 @@ class CBFQP:
             self.cbf_param['alpha'] = 1.5
         elif self.robot_spec['model'] == 'KinematicBicycle2D_DPCBF':
             self.cbf_param['alpha'] = 1.5
+        # --- NEW CODE START ---
+        elif self.robot_spec['model'] == 'DoubleIntegrator3D_DPCBF':
+            self.cbf_param['alpha'] = 1.5
+        # --- NEW CODE END ---
         elif self.robot_spec['model'] == 'Quad2D':
             self.cbf_param['alpha1'] = 1.5
             self.cbf_param['alpha2'] = 1.5
@@ -71,6 +75,18 @@ class CBFQP:
             constraints = [self.A1 @ self.u + self.b1 >= 0,
                            cp.abs(self.u[0]) <= self.robot_spec['a_max'],
                            cp.abs(self.u[1]) <= self.robot_spec['beta_max']]
+        # --- NEW CODE START ---
+        elif self.robot_spec['model'] == 'DoubleIntegrator3D_DPCBF':
+            self.u = cp.Variable((3, 1))
+            self.u_ref = cp.Parameter((3, 1), value=np.zeros((3, 1)))
+            self.A1 = cp.Parameter((self.num_obs, 3), value=np.zeros((self.num_obs, 3)))
+            self.b1 = cp.Parameter((self.num_obs, 1), value=np.zeros((self.num_obs, 1)))
+            objective = cp.Minimize(cp.sum_squares(self.u - self.u_ref))
+            constraints = [self.A1 @ self.u + self.b1 >= 0,
+                           cp.abs(self.u[0]) <= self.robot_spec['a_max'],
+                           cp.abs(self.u[1]) <= self.robot_spec['a_max'],
+                           cp.abs(self.u[2]) <= self.robot_spec['a_max']]
+        # --- NEW CODE END ---
         elif self.robot_spec['model'] == 'Quad2D':
             constraints = [self.A1 @ self.u + self.b1 >= 0,
                            self.robot_spec["f_min"] <= self.u[0],
@@ -152,7 +168,7 @@ class CBFQP:
             else:
                 # Retrieve Barrier Terms
                 dt = self.robot.dt
-                if self.robot_spec['model'] in ['SingleIntegrator2D', 'Unicycle2D', 'KinematicBicycle2D_C3BF', 'KinematicBicycle2D_DPCBF', 'Quad3D']:
+                if self.robot_spec['model'] in ['SingleIntegrator2D', 'Unicycle2D', 'KinematicBicycle2D_C3BF', 'KinematicBicycle2D_DPCBF', 'Quad3D', 'DoubleIntegrator3D_DPCBF']:
                     h, dh_dx = self.robot.agent_barrier(obs)
                     
                     if mode == 'hard':
