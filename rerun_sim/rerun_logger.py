@@ -1,10 +1,10 @@
 """
-Rerun Logger Module
+Created on Apr 09
+@author: Kane Weng
 
-Handles all rr.log() calls for 3D visualization of robot dynamics, obstacles,
-and DPCBF paraboloid surfaces.
-
-Uses modern Rerun API (v0.15+) with rr.set_time() for timeline tracking.
+@description:
+Rerun Logger Module that handles all rr.log() calls for 3D visualization of robot dynamics, obstacles,
+and DPCBF paraboloid surfaces. It uses modern Rerun API (v0.15+) with rr.set_time() for timeline tracking.
 """
 
 import numpy as np
@@ -24,17 +24,15 @@ class RerunLogger3D:
             recording_id: Optional recording ID for persistence
         """
         self.app_name = app_name
-        rr.init(self.app_name, spawn=True)
+        rr.init(self.app_name, recording_id=recording_id, spawn=True)
 
     def set_time_step(self, step: int):
         """Set the current simulation time step."""
-        rr.set_time_sequence("step", step)
+        rr.set_time("step", sequence=step)          # This is for version 0.31.2
+        # rr.set_time_sequence("step", step)        # This is for version 0.16.1
 
-    def log_robot_state(self,
-                       robot_pos: np.ndarray,
-                       robot_vel: np.ndarray,
-                       robot_radius: float = 0.25,
-                       color: Tuple[int, int, int] = (100, 150, 200)):
+    def log_robot_state(self, robot_pos: np.ndarray, robot_vel: np.ndarray,
+                       robot_radius: float = 0.25, color: Tuple[int, int, int] = (100, 150, 200)):
         """
         Log robot position and velocity in 3D space.
 
@@ -44,29 +42,11 @@ class RerunLogger3D:
             robot_radius: Sphere radius
             color: RGB color tuple
         """
-        rr.log(
-            "world/robot/position",
-            rr.Points3D(
-                positions=[robot_pos],
-                radii=[robot_radius],
-                colors=[color]
-            ),
-        )
-
-        # Log velocity as arrow
+        rr.log("world/robot/position", rr.Points3D(positions=[robot_pos], radii=[robot_radius], colors=[color]))
         if np.linalg.norm(robot_vel) > 1e-3:
-            rr.log(
-                "world/robot/velocity",
-                rr.Arrows3D(
-                    origins=[robot_pos],
-                    vectors=[robot_vel],
-                    colors=[color],
-                ),
-            )
+            rr.log("world/robot/velocity", rr.Arrows3D(origins=[robot_pos], vectors=[robot_vel], colors=[color]))
 
-    def log_obstacles(self,
-                     obstacles: np.ndarray,
-                     color: Tuple[int, int, int] = (200, 100, 100)):
+    def log_obstacles(self, obstacles: np.ndarray, color: Tuple[int, int, int] = (200, 100, 100)):
         """
         Log all dynamic obstacles as 3D spheres with velocities.
 
@@ -79,38 +59,18 @@ class RerunLogger3D:
 
         positions = obstacles[:, 0:3]  # [x, y, z]
         radii = obstacles[:, 3:4].flatten()  # radius
-
-        rr.log(
-            "world/obstacles",
-            rr.Points3D(
-                positions=positions,
-                radii=radii,
-                colors=[color] * len(obstacles),
-            ),
-        )
-
-        # Log velocities as arrows
         velocities = obstacles[:, 4:7]  # [vx, vy, vz]
         vel_magnitudes = np.linalg.norm(velocities, axis=1)
 
-        # Only log arrows for obstacles with meaningful velocity
+        rr.log("world/obstacles", rr.Points3D(positions=positions, radii=radii, colors=[color] * len(obstacles)))
         if np.any(vel_magnitudes > 1e-3):
             non_static_mask = vel_magnitudes > 1e-3
             origins = positions[non_static_mask]
             directions = velocities[non_static_mask]
+            rr.log("world/obstacles/velocities", 
+                   rr.Arrows3D(origins=origins, vectors=directions, colors=[(255, 150, 100)] * np.sum(non_static_mask)))
 
-            rr.log(
-                "world/obstacles/velocities",
-                rr.Arrows3D(
-                    origins=origins,
-                    vectors=directions,
-                    colors=[(255, 150, 100)] * np.sum(non_static_mask),
-                ),
-            )
-
-    def log_waypoints(self,
-                     waypoints: np.ndarray,
-                     color: Tuple[int, int, int] = (50, 200, 50)):
+    def log_waypoints(self, waypoints: np.ndarray, color: Tuple[int, int, int] = (50, 200, 50)):
         """
         Log 3D waypoint targets.
 
@@ -121,15 +81,9 @@ class RerunLogger3D:
         if waypoints.shape[0] == 0:
             return
 
-        rr.log(
-            "world/waypoints",
-            rr.Points3D(
-                positions=waypoints,
-                radii=[0.3] * len(waypoints),
-                colors=[color] * len(waypoints),
-                labels=[f"WP{i}" for i in range(len(waypoints))],
-            ),
-        )
+        rr.log("world/waypoints", 
+               rr.Points3D(positions=waypoints, radii=[0.3] * len(waypoints),
+                           colors=[color] * len(waypoints), labels=[f"WP{i}" for i in range(len(waypoints))]))
 
     def log_dpcbf_paraboloid(self,
                             robot_pos: np.ndarray,
@@ -139,7 +93,6 @@ class RerunLogger3D:
                             func_mu: float,
                             robot_radius: float,
                             obs_id: int,            
-                            color: Tuple[int, int, int] = (150, 150, 255),
                             alpha: int = 100,
                             mesh_density: int = 25):
         """
@@ -148,7 +101,7 @@ class RerunLogger3D:
         The paraboloid boundary surface is defined by:
             h(v_rel) = v_rel_x + lambda * (v_rel_y^2 + v_rel_z^2) + mu = 0
 
-        We generate a mesh in relative velocity space, solve for the boundary,
+        Generate a mesh in relative velocity space, solve for the boundary,
         and display it in world coordinates.
 
         Args:
@@ -158,10 +111,11 @@ class RerunLogger3D:
             func_lambda: DPCBF lambda parameter
             func_mu: DPCBF mu parameter
             robot_radius: Robot radius
-            color: RGB color tuple
             alpha: Transparency (0-255)
             mesh_density: Density of surface mesh points
         """
+        assigned_color = self._get_color_for_id(obs_id)
+
         # Extract obstacle properties
         obs_pos = obstacle[0:3]
         obs_vel = obstacle[4:7] if len(obstacle) > 4 else np.zeros(3)
@@ -169,7 +123,6 @@ class RerunLogger3D:
         # Compute relative position and velocity
         p_rel = obs_pos - robot_pos
         v_rel = obs_vel - robot_vel
-
         p_rel_mag = np.linalg.norm(p_rel)
         v_rel_mag = np.linalg.norm(v_rel)
 
@@ -177,22 +130,17 @@ class RerunLogger3D:
         if p_rel_mag < 0.5 or p_rel_mag > 30.0:
             return
 
-        # 1. The X-axis points directly along the line of sight
+        # Construct LoS Rotation matrix
         x_axis = p_rel / p_rel_mag
 
-        # 2. Choose a temporary 'up' vector to construct the Y and Z axes
-        up = np.array([0.0, 0.0, 1.0])
-
         # Prevent singularity if the robot is looking perfectly straight up or down
+        up = np.array([0.0, 0.0, 1.0])
         if np.abs(np.dot(x_axis, up)) > 0.99: 
             up = np.array([0.0, 1.0, 0.0])
             
-        # 3. Create orthogonal Y and Z axes
         y_axis = np.cross(up, x_axis)
         y_axis /= np.linalg.norm(y_axis)
         z_axis = np.cross(x_axis, y_axis)
-
-        # 4. Construct the Rotation Matrix directly
         R = np.column_stack((x_axis, y_axis, z_axis))
 
         # Generate mesh in relative velocity space (parabola surface)
@@ -206,7 +154,6 @@ class RerunLogger3D:
 
         # From h = v_rel_x + lambda * (y^2 + z^2) + mu = 0
         # Solve for v_rel_x at the boundary
-        eps = 1e-6
         X_bound = -(func_lambda * (Y**2 + Z**2) + func_mu)
 
         # Stack into 3D relative velocity points
@@ -224,40 +171,18 @@ class RerunLogger3D:
         # The actual rendering shows relative velocity surfaces emanating from robot
         points_display = robot_pos.reshape(3, 1) + points_world
 
-        # Create point cloud with multiple colors for depth perception
-        colors = self._generate_gradient_colors(
-            points_world.shape[1],
-            base_color=color,
-            alpha=alpha
-        )
+        # Dynamic Paraboloid CBF
+        entity_path = f"world/dpcbf/paraboloid/obs_{obs_id}"    # Assign entity_path for each paraboloid to avoid overwriting existing instance
+        colors = self._generate_gradient_colors(points_world.shape[1],
+                                                base_color=assigned_color, alpha=alpha)
+        rr.log(entity_path, rr.Points3D(positions=points_display.T, radii=[0.05] * points_display.shape[1], colors=colors))
 
-        entity_path = f"world/dpcbf/paraboloid/obs_{obs_id}"
-
-        rr.log(
-            entity_path,
-            rr.Points3D(
-                positions=points_display.T,
-                radii=[0.05] * points_display.shape[1],
-                colors=colors,
-            ),
-        )
-
-        # Log the relative velocity vector (v_rel = obs_vel - robot_vel)
-        # We plot it originating from the robot to see it interact with the paraboloid
+        # Relative Velocity Vector
         v_rel_path = f"world/dpcbf/v_rel/obs_{obs_id}"
-        
-        rr.log(
-            v_rel_path,
-            rr.Arrows3D(
-                origins=[robot_pos],
-                vectors=[v_rel],
-                colors=[(255, 100, 0, 255)], # Orange to distinguish from absolute velocities
-                radii=[0.02]
-            )
-        )
+        arrow_color = (assigned_color[0], assigned_color[1], assigned_color[2], 255)
+        rr.log(v_rel_path, rr.Arrows3D(origins=[robot_pos], vectors=[v_rel], colors=[arrow_color], radii=[0.02]))
 
-    def log_trajectory(self,
-                      trajectory: List[np.ndarray],
+    def log_trajectory(self, trajectory: List[np.ndarray],
                       color: Tuple[int, int, int] = (255, 200, 100)):
         """
         Log robot trajectory as a line or sparse points.
@@ -276,19 +201,11 @@ class RerunLogger3D:
             indices = np.linspace(0, len(trajectory) - 1, 500, dtype=int)
             traj_array = traj_array[indices]
 
-        rr.log(
-            "world/trajectory",
-            rr.Points3D(
-                positions=traj_array,
-                radii=[0.03] * len(traj_array),
-                colors=[color] * len(traj_array),
-            ),
-        )
+        rr.log("world/trajectory", 
+               rr.Points3D(positions=traj_array, radii=[0.03] * len(traj_array), colors=[color] * len(traj_array)))
 
-    def log_goal(self,
-                goal_pos: np.ndarray,
-                goal_radius: float = 0.5,
-                color: Tuple[int, int, int] = (50, 255, 50)):
+    def log_goal(self, goal_pos: np.ndarray,
+                goal_radius: float = 0.5, color: Tuple[int, int, int] = (50, 255, 50)):
         """
         Log current goal/target position.
 
@@ -297,24 +214,14 @@ class RerunLogger3D:
             goal_radius: Visualization radius
             color: RGB color tuple
         """
-        rr.log(
-            "world/current_goal",
-            rr.Points3D(
-                positions=[goal_pos],
-                radii=[goal_radius],
-                colors=[color],
-            ),
-        )
+        rr.log("world/current_goal", 
+               rr.Points3D(positions=[goal_pos], radii=[goal_radius], colors=[color]))
 
     @staticmethod
     def _generate_gradient_colors(n: int,
                                  base_color: Tuple[int, int, int],
                                  alpha: int = 255) -> List[Tuple[int, int, int, int]]:
-        """
-        Generate a gradient of colors from dark to light for depth perception.
-
-        Returns list of RGBA tuples.
-        """
+        """Generate a gradient of colors from dark to light for depth perception. Returns list of RGBA tuples."""
         colors = []
         for i in range(n):
             factor = i / max(n - 1, 1)
@@ -327,3 +234,18 @@ class RerunLogger3D:
             colors.append((r, g, b, alpha))
 
         return colors
+    
+    @staticmethod
+    def _get_color_for_id(obs_id: int) -> Tuple[int, int, int]:
+        """Generate a distinct, deterministic RGB color based on an obstacle ID."""
+        palette = [
+            (255, 100, 100),  # Bright Red
+            (100, 255, 100),  # Bright Green
+            (100, 150, 255),  # Light Blue
+            (255, 200, 50),   # Yellow/Orange
+            (255, 100, 255),  # Magenta
+            (100, 255, 255),  # Cyan
+            (150, 50, 255),   # Purple
+            (50, 255, 150),   # Mint
+        ]
+        return palette[obs_id % len(palette)]

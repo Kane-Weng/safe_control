@@ -1,6 +1,8 @@
 """
-Main Entry Point for 3D Rerun Visualization
+Created on Apr 09
+@author: Kane Weng
 
+@description:
 This script runs the DoubleIntegrator3D_DPCBF simulation with full 3D Rerun
 visualization. It completely bypasses Matplotlib and provides a modern,
 interactive 3D visualization experience.
