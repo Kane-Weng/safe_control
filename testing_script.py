@@ -12,7 +12,7 @@ obs_radius = 0.5
 # 2. The Simulation Loop
 for step in range(200):
     # Tell Rerun what "time" it is. Everything logged after this is attached to this step.
-    rr.set_time("step", sequence=step)
+    rr.set_time_sequence("step", step)
     
     # --- MOCK DYNAMICS ---
     robot_pos = np.array([step * 0.1, 7.5, 2.0]) # Moving forward

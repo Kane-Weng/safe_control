@@ -28,7 +28,7 @@ class RerunLogger3D:
 
     def set_time_step(self, step: int):
         """Set the current simulation time step."""
-        rr.set_time("step", sequence=step)
+        rr.set_time_sequence("step", step)
 
     def log_robot_state(self,
                        robot_pos: np.ndarray,
@@ -138,6 +138,7 @@ class RerunLogger3D:
                             func_lambda: float,
                             func_mu: float,
                             robot_radius: float,
+                            obs_id: int,            
                             color: Tuple[int, int, int] = (150, 150, 255),
                             alpha: int = 100,
                             mesh_density: int = 25):
@@ -176,19 +177,23 @@ class RerunLogger3D:
         if p_rel_mag < 0.5 or p_rel_mag > 30.0:
             return
 
-        # Compute rotation (yaw and pitch) to align with relative position
-        yaw = np.arctan2(p_rel[1], p_rel[0])
-        pitch = np.arctan2(p_rel[2], np.sqrt(p_rel[0]**2 + p_rel[1]**2))
+        # 1. The X-axis points directly along the line of sight
+        x_axis = p_rel / p_rel_mag
 
-        cy, sy = np.cos(yaw), np.sin(yaw)
-        cp, sp = np.cos(pitch), np.sin(pitch)
+        # 2. Choose a temporary 'up' vector to construct the Y and Z axes
+        up = np.array([0.0, 0.0, 1.0])
 
-        # Rotation matrix from relative frame to world frame
-        R = np.array([
-            [cp * cy,  cp * sy,  sp],
-            [-sy,      cy,       0],
-            [-sp * cy, -sp * sy, cp]
-        ])
+        # Prevent singularity if the robot is looking perfectly straight up or down
+        if np.abs(np.dot(x_axis, up)) > 0.99: 
+            up = np.array([0.0, 1.0, 0.0])
+            
+        # 3. Create orthogonal Y and Z axes
+        y_axis = np.cross(up, x_axis)
+        y_axis /= np.linalg.norm(y_axis)
+        z_axis = np.cross(x_axis, y_axis)
+
+        # 4. Construct the Rotation Matrix directly
+        R = np.column_stack((x_axis, y_axis, z_axis))
 
         # Generate mesh in relative velocity space (parabola surface)
         # Range: cover ±L in y and z dimensions
@@ -226,13 +231,29 @@ class RerunLogger3D:
             alpha=alpha
         )
 
+        entity_path = f"world/dpcbf/paraboloid/obs_{obs_id}"
+
         rr.log(
-            "world/dpcbf/paraboloid",
+            entity_path,
             rr.Points3D(
                 positions=points_display.T,
                 radii=[0.05] * points_display.shape[1],
                 colors=colors,
             ),
+        )
+
+        # Log the relative velocity vector (v_rel = obs_vel - robot_vel)
+        # We plot it originating from the robot to see it interact with the paraboloid
+        v_rel_path = f"world/dpcbf/v_rel/obs_{obs_id}"
+        
+        rr.log(
+            v_rel_path,
+            rr.Arrows3D(
+                origins=[robot_pos],
+                vectors=[v_rel],
+                colors=[(255, 100, 0, 255)], # Orange to distinguish from absolute velocities
+                radii=[0.02]
+            )
         )
 
     def log_trajectory(self,

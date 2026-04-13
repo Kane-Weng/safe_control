@@ -42,17 +42,19 @@ class DoubleIntegrator3D_DPCBF(DoubleIntegrator3D):
         p_rel_mag = np.linalg.norm(p_rel)
         v_rel_mag = np.linalg.norm(v_rel)
 
-        # Rotation angle and transformation
-        yaw = np.arctan2(p_rel[1], p_rel[0])
-        pitch = np.arctan2(p_rel[2], np.sqrt(p_rel[0]**2 + p_rel[1]**2))
-
-        cy, sy = np.cos(yaw), np.sin(yaw)
-        cp, sp = np.cos(pitch), np.sin(pitch)
-        R = np.array([
-            [cp * cy,  cp * sy,  sp],
-            [-sy,      cy,       0],
-            [-sp * cy, -sp * sy, cp]
-        ])
+        # Robust vector-based coordinate transformation (World -> Relative)
+        x_axis = p_rel / p_rel_mag
+        
+        up = np.array([0.0, 0.0, 1.0])
+        if np.abs(np.dot(x_axis, up)) > 0.99:  # Avoid singularity if looking straight up/down
+            up = np.array([0.0, 1.0, 0.0])
+            
+        y_axis = np.cross(up, x_axis)
+        y_axis /= np.linalg.norm(y_axis)
+        z_axis = np.cross(x_axis, y_axis)
+        
+        # R rotates world vectors INTO the obstacle's relative frame
+        R = np.vstack([x_axis, y_axis, z_axis])
 
         # Transform v_rel into the new coordinate frame
         v_rel_new = R @ v_rel
@@ -128,19 +130,22 @@ class DoubleIntegrator3D_DPCBF(DoubleIntegrator3D):
             p_rel = obs_p - p
             v_rel = obs_v - v
 
-            # Compute the rotation angle
-            yaw = ca.atan2(p_rel[1], p_rel[0])
-            pitch = ca.atan2(p_rel[2], ca.sqrt(p_rel[0]**2 + p_rel[1]**2))
-
-            # Rotation matrix for transforming to the new coordinate frame:
-            cy, sy = ca.cos(yaw), ca.sin(yaw)
-            cp, sp = ca.cos(pitch), ca.sin(pitch)
-
-            R = ca.vertcat(
-                ca.horzcat(cp * cy, cp * sy, sp),
-                ca.horzcat(-sy,     cy,      0),
-                ca.horzcat(-sp * cy, -sp * sy, cp)
-            )
+            # Robust CasADi vector-based transformation
+            p_rel_mag = ca.norm_2(p_rel)
+            x_axis = p_rel / p_rel_mag
+            
+            up = ca.DM([0.0, 0.0, 1.0])
+            
+            # CasADi if_else to prevent singularity
+            dot_val = ca.fabs(ca.mtimes(x_axis.T, up))
+            up = ca.if_else(dot_val > 0.99, ca.DM([0.0, 1.0, 0.0]), up)
+            
+            y_axis = ca.cross(up, x_axis)
+            y_axis = y_axis / ca.norm_2(y_axis)
+            z_axis = ca.cross(x_axis, y_axis)
+            
+            # Vertically stack the transposed vectors to create the World -> Relative rotation
+            R = ca.vertcat(x_axis.T, y_axis.T, z_axis.T)
 
             # Transform v_rel into the new coordinate frame
             v_rel_new = ca.mtimes(R, v_rel)

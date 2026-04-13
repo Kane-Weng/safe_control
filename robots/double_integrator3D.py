@@ -73,7 +73,7 @@ class DoubleIntegrator3D:
             [0, 0, 0, 0, 0, 0]
         ])
 
-    def g(self, X, casadi=False):
+    def g(self, X=None, casadi=False):
         if casadi:
             return ca.DM([
                 [0, 0, 0],
@@ -142,7 +142,7 @@ class DoubleIntegrator3D:
         if G.shape[0] < 3:
             G = np.vstack((G, np.zeros((3 - G.shape[0], 1))))
         
-        v_max = self.robot_spec['v_max']  # Maximum velocity (x+y)
+        v_max = self.robot_spec['v_max']  # Maximum velocity (x+y+z)
         a_max = self.robot_spec['a_max']  # Maximum acceleration
 
         pos_errors = G[0:3, 0] - X[0:3, 0]
@@ -166,11 +166,11 @@ class DoubleIntegrator3D:
 
     def nominal_attitude_input(self, theta, theta_des, k_theta=1.0):
         '''
-        nominal input for attitude control
+        nominal input for attitude control (roll, pitch, yaw)
         '''
         error_theta = angle_normalize(theta_des - theta)
-        yaw_rate = k_theta * error_theta
-        return yaw_rate.reshape(-1, 1)
+        omega_des = k_theta * error_theta
+        return omega_des.reshape(-1, 1)
 
     def stop(self, X, k_a=1.0):
         # Set desired velocity to zero
@@ -186,9 +186,9 @@ class DoubleIntegrator3D:
 
     def rotate_to(self, theta, theta_des, k_omega=2.0):
         error_theta = angle_normalize(theta_des - theta)
-        yaw_rate = k_omega * error_theta
-        yaw_rate = np.clip(yaw_rate, -self.robot_spec['w_max'], self.robot_spec['w_max'])
-        return np.array([yaw_rate]).reshape(-1, 1)
+        omega_des = k_omega * error_theta
+        omega_des = np.clip(omega_des, -self.robot_spec['w_max'], self.robot_spec['w_max'])
+        return np.array([omega_des]).reshape(-1, 1)
 
     def agent_barrier(self, X, obs, robot_radius, beta=1.01):
         '''Continuous Time High Order CBF'''
@@ -205,7 +205,7 @@ class DoubleIntegrator3D:
 
             # these two options are the same
             # df_dx = self.df_dx(X)
-            # dh_dot_dx = np.append( ( 2 * self.f(X)[0:3] ).T, np.array([[0,0]]), axis = 1 ) + 2 * ( X[0:3] - obsX[0:3] ).T @ df_dx[0:3,:]
+            # dh_dot_dx = np.append( ( 2 * self.f(X)[0:3] ).T, np.array([[0,0,0]]), axis = 1 ) + 2 * ( X[0:3] - obsX[0:3] ).T @ df_dx[0:3,:]
             dh_dot_dx = np.append(2 * X[3:6].T, 2 * (X[0:3] - obsX[0:3]).T, axis=1)
         elif obs[-1] == 1:
             # Complex math skipped, not strictly required for DPCBF initial testing

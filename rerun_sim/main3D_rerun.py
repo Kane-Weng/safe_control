@@ -48,11 +48,11 @@ def create_3d_scenario_simple():
     for i, pos in enumerate(obs_positions_base):
         ox, oy, oz = pos
         r = 0.5
-        # Alternating velocities with z-component
-        if i % 2 == 0:
-            vx, vy, vz = -0.5, 0.5, 0.1
-        else:
-            vx, vy, vz = -0.5, -0.5, -0.15
+        
+        # Give every single obstacle a unique velocity vector
+        vx = -0.3 - (i * 0.05)           # Varies based on index
+        vy = 0.5 if i % 2 == 0 else -0.5 # Alternates left/right
+        vz = 0.1 * np.sin(i)             # Adds a unique vertical wobble
 
         dynamic_obs.append([ox, oy, oz, r, vx, vy, vz])
 
